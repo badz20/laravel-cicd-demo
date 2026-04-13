@@ -1,12 +1,17 @@
-name: Test SSH Connection
+name: Deploy Laravel to EC2
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  test:
+  deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -14,6 +19,18 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Test Connection
+      - name: Deploy to EC2
         run: |
-          ssh -i ~/.ssh/id_ed25519 -v ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "echo 'SSH works!'; whoami; pwd"
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd /var/www/laravel-cicd-demo
+            git pull origin main
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            sudo chown -R www-data:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+            sudo systemctl reload php8.4-fpm
+            echo "✅ Deployment completed at $(date)"
+          EOF
