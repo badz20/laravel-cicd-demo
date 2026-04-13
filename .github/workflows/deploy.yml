@@ -3,7 +3,7 @@ name: Deploy Laravel to EC2
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:  # Allows manual trigger
 
 jobs:
   deploy:
@@ -12,25 +12,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "${{ secrets.EC2_HOST }} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM/gB+kjO2TkTgITN97Wzv/iZLhaHkS6gTaEQcERd1P3" >> ~/.ssh/known_hosts
+
       - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
             cd /var/www/laravel-cicd-demo
-            sudo chown -R ubuntu:www-data .
-            sudo chown -R www-data:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
-            sudo chmod -R 777 storage/logs
-            git config --global --add safe.directory /var/www/laravel-cicd-demo
             git pull origin main
             composer install --no-dev --optimize-autoloader
+            sudo chown -R www-data:www-data storage bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
             php artisan migrate --force
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
-            sudo chown -R www-data:www-data storage bootstrap/cache
-            sudo systemctl reload php8.4-fpm
-            echo "✅ Deployment completed at $(date)"
+            sudo systemctl reload php8.3-fpm
+            echo "Deployment completed at $(date)"
+          EOF
