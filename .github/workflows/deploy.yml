@@ -22,15 +22,26 @@ jobs:
       - name: Deploy to EC2
         run: |
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
+            set -e
+            echo "=== Starting deployment ==="
             cd /var/www/laravel-cicd-demo
+            echo "Current directory: $(pwd)"
+            echo "=== Git pull ==="
             git pull origin main
+            echo "=== Composer install ==="
             composer install --no-dev --optimize-autoloader
+            echo "=== Migrations ==="
             php artisan migrate --force
+            echo "=== Cache config ==="
             php artisan config:cache
+            echo "=== Cache routes ==="
             php artisan route:cache
+            echo "=== Cache views ==="
             php artisan view:cache
+            echo "=== Permissions ==="
             sudo chown -R www-data:www-data storage bootstrap/cache
             sudo chmod -R 775 storage bootstrap/cache
+            echo "=== Restart PHP ==="
             sudo systemctl reload php8.4-fpm
             echo "✅ Deployment completed at $(date)"
           EOF
