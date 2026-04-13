@@ -12,61 +12,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Test SSH Connection
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -v ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "echo 'SSH connection successful'"
-
       - name: Deploy to EC2
-        run: |
-          ssh -i ~/.ssh/id_ed25519 ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
-            echo "=== Starting deployment ==="
-            echo "Current user: $(whoami)"
-            echo "Current directory: $(pwd)"
-
-            cd /var/www/laravel-cicd-demo || { echo "Directory not found!"; exit 1; }
-            echo "Successfully changed to $(pwd)"
-
-            echo "=== Fixing permissions ==="
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /var/www/laravel-cicd-demo
             sudo chown -R ubuntu:www-data .
             sudo chown -R www-data:www-data storage bootstrap/cache
             sudo chmod -R 775 storage bootstrap/cache
             sudo chmod -R 777 storage/logs
-            echo "Permissions fixed"
-
-            echo "=== Git pull ==="
             git config --global --add safe.directory /var/www/laravel-cicd-demo
             git pull origin main
-            echo "Git pull completed"
-
-            echo "=== Composer install ==="
-            /usr/local/bin/composer install --no-dev --optimize-autoloader
-            echo "Composer install completed"
-
-            echo "=== Migrations ==="
+            composer install --no-dev --optimize-autoloader
             php artisan migrate --force
-            echo "Migrations completed"
-
-            echo "=== Caching ==="
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
-            echo "Caching completed"
-
-            echo "=== Final permissions ==="
             sudo chown -R www-data:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
-            echo "Final permissions set"
-
-            echo "=== Restart PHP ==="
             sudo systemctl reload php8.4-fpm
-            echo "PHP restarted"
-
             echo "✅ Deployment completed at $(date)"
-          EOF
